@@ -2,8 +2,6 @@ package com.example.eventlogpipeline.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Index;
@@ -48,10 +46,6 @@ public class Order {
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "product_id", nullable = false)
     private Product product;
-
-    @Enumerated(EnumType.STRING)
-    @Column(name = "order_status", length = 20, nullable = false)
-    private OrderStatus orderStatus;
 
     @Column(name = "quantity", nullable = false)
     private int quantity;
