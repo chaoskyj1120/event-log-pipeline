@@ -10,7 +10,9 @@ import org.jfree.chart.axis.NumberAxis;
 import org.jfree.chart.plot.CategoryPlot;
 import org.jfree.chart.plot.PlotOrientation;
 import org.jfree.chart.plot.RingPlot;
+import org.jfree.chart.renderer.category.AbstractCategoryItemRenderer;
 import org.jfree.chart.renderer.category.BarRenderer;
+import org.jfree.chart.renderer.category.LineAndShapeRenderer;
 import org.jfree.chart.renderer.category.StandardBarPainter;
 import org.jfree.chart.title.TextTitle;
 import org.jfree.chart.ui.RectangleEdge;
@@ -22,10 +24,9 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
 import java.awt.*;
+import java.awt.geom.Ellipse2D;
 import java.io.File;
 import java.io.IOException;
-import java.util.List;
-import java.util.Map;
 
 @Slf4j
 @Service
@@ -67,13 +68,23 @@ public class ChartService {
 
     public void generateAll() {
         new File(outputDir).mkdirs();
+
         generateEventTypeChart();
         generateSuccessFailChart();
         generateHourlyEventChart();
         generateDeviceOrderRateChart();
         generateCategorySalesChart();
+        generateProductRevenueChart();
+        generateDiscountRangeChart();
+        generateDiscountRateChart();
+        generatePriceRangeChart();
+        generateProductFailRateChart();
+        generateGradeDeviceChart();
+
         log.info("=== 차트 생성 완료: {} ===", new File(outputDir).getAbsolutePath());
     }
+
+    // ── 기존 차트 ──────────────────────────────────
 
     private void generateEventTypeChart() {
         String sql = "SELECT event_type, COUNT(*) AS count FROM event_logs GROUP BY event_type ORDER BY count DESC";
@@ -136,6 +147,118 @@ public class ChartService {
         save(barChart("카테고리별 판매량", "카테고리", "총 수량", ds, true), "category_sales.png", 900, 520);
     }
 
+    // ── 신규 차트 ──────────────────────────────────
+
+    private void generateProductRevenueChart() {
+        String sql = """
+            SELECT p.product_name, SUM(o.price_at_order * o.quantity) AS total_revenue
+            FROM orders o JOIN products p ON o.product_id = p.product_id
+            GROUP BY p.product_id, p.product_name ORDER BY total_revenue DESC
+            """;
+        DefaultCategoryDataset ds = new DefaultCategoryDataset();
+        jdbcTemplate.queryForList(sql).forEach(r ->
+            ds.addValue(((Number) r.get("total_revenue")).doubleValue(), "매출", (String) r.get("product_name")));
+
+        save(barChart("상품별 총 매출", "상품", "매출 (원)", ds, true), "product_revenue.png", 1000, 520);
+    }
+
+    private void generateDiscountRangeChart() {
+        String sql = """
+            SELECT CASE
+                       WHEN discount_at_order IS NULL OR discount_at_order = 0 THEN '할인 없음'
+                       WHEN discount_at_order < 0.1 THEN '10% 미만'
+                       WHEN discount_at_order < 0.2 THEN '10~20%'
+                       WHEN discount_at_order < 0.3 THEN '20~30%'
+                       ELSE '30% 이상'
+                   END AS discount_range,
+                   SUM(quantity) AS total_quantity
+            FROM orders
+            GROUP BY discount_range
+            ORDER BY MIN(CASE WHEN discount_at_order IS NULL OR discount_at_order = 0 THEN -1
+                              ELSE discount_at_order END)
+            """;
+        DefaultCategoryDataset ds = new DefaultCategoryDataset();
+        jdbcTemplate.queryForList(sql).forEach(r ->
+            ds.addValue(((Number) r.get("total_quantity")).longValue(), "구매량", (String) r.get("discount_range")));
+
+        save(barChart("할인율 구간별 구매량", "할인율 구간", "구매량", ds, true), "discount_range_quantity.png", 900, 520);
+    }
+
+    private void generateDiscountRateChart() {
+        String sql = """
+            SELECT ROUND(COALESCE(discount_at_order, 0) * 100, 0)::int AS discount_percent,
+                   SUM(quantity) AS total_quantity
+            FROM orders
+            GROUP BY discount_percent
+            ORDER BY discount_percent
+            """;
+        DefaultCategoryDataset ds = new DefaultCategoryDataset();
+        jdbcTemplate.queryForList(sql).forEach(r ->
+            ds.addValue(((Number) r.get("total_quantity")).longValue(), "구매량",
+                        r.get("discount_percent") + "%"));
+
+        save(barChart("할인율별 구매량", "할인율", "구매량", ds, false), "discount_rate_quantity.png", 900, 520);
+    }
+
+    private void generatePriceRangeChart() {
+        String sql = """
+            SELECT CASE
+                       WHEN price_at_order < 50000   THEN '5만원 미만'
+                       WHEN price_at_order < 200000  THEN '5~20만원'
+                       WHEN price_at_order < 500000  THEN '20~50만원'
+                       WHEN price_at_order < 1000000 THEN '50~100만원'
+                       ELSE '100만원 이상'
+                   END AS price_range,
+                   SUM(quantity) AS total_quantity
+            FROM orders
+            GROUP BY price_range
+            ORDER BY MIN(price_at_order)
+            """;
+        DefaultCategoryDataset ds = new DefaultCategoryDataset();
+        jdbcTemplate.queryForList(sql).forEach(r ->
+            ds.addValue(((Number) r.get("total_quantity")).longValue(), "구매량", (String) r.get("price_range")));
+
+        save(barChart("가격별 구매량", "가격대", "구매량", ds, true), "price_range_quantity.png", 900, 520);
+    }
+
+    private void generateProductFailRateChart() {
+        String sql = """
+            SELECT p.product_name,
+                   ROUND(COUNT(CASE WHEN e.event_type = 'ORDER_FAILED' THEN 1 END)::numeric /
+                         NULLIF(COUNT(CASE WHEN e.event_type IN ('ORDER_CREATED', 'ORDER_FAILED') THEN 1 END), 0) * 100, 1)
+                         AS fail_rate_percent
+            FROM event_logs e JOIN products p ON e.product_id = p.product_id
+            WHERE e.event_type IN ('ORDER_CREATED', 'ORDER_FAILED')
+            GROUP BY p.product_id, p.product_name
+            ORDER BY fail_rate_percent DESC
+            """;
+        DefaultCategoryDataset ds = new DefaultCategoryDataset();
+        jdbcTemplate.queryForList(sql).forEach(r ->
+            ds.addValue(((Number) r.get("fail_rate_percent")).doubleValue(), "실패율(%)", (String) r.get("product_name")));
+
+        save(barChart("상품별 주문 실패율", "상품", "실패율 (%)", ds, true), "product_fail_rate.png", 1000, 520);
+    }
+
+    private void generateGradeDeviceChart() {
+        String sql = """
+            SELECT u.user_grade, e.device_type,
+                   ROUND(COUNT(*)::numeric / SUM(COUNT(*)) OVER (PARTITION BY u.user_grade) * 100, 1) AS ratio_percent
+            FROM event_logs e JOIN users u ON e.user_id = u.user_id
+            WHERE e.device_type IS NOT NULL
+            GROUP BY u.user_grade, e.device_type
+            ORDER BY u.user_grade, e.device_type
+            """;
+        DefaultCategoryDataset ds = new DefaultCategoryDataset();
+        jdbcTemplate.queryForList(sql).forEach(r ->
+            ds.addValue(((Number) r.get("ratio_percent")).doubleValue(),
+                        (String) r.get("device_type"),
+                        (String) r.get("user_grade")));
+
+        save(groupedBarChart("유저 등급별 디바이스 선호도", "유저 등급", "비율 (%)", ds), "grade_device.png", 900, 520);
+    }
+
+    // ── 차트 빌더 ─────────────────────────────────
+
     private JFreeChart barChart(String title, String xLabel, String yLabel,
                                 DefaultCategoryDataset ds, boolean multiColor) {
         int cols = ds.getColumnCount();
@@ -152,6 +275,49 @@ public class ChartService {
         renderer.setMaximumBarWidth(cols <= 6 ? 0.45 : 0.85);
         renderer.setItemMargin(0.08);
 
+        JFreeChart chart = buildCategoryChart(title, xLabel, yLabel, ds, renderer, false);
+        if (cols > 8) {
+            chart.getCategoryPlot().getDomainAxis()
+                 .setCategoryLabelPositions(CategoryLabelPositions.UP_45);
+        }
+        return chart;
+    }
+
+    private JFreeChart lineChart(String title, String xLabel, String yLabel, DefaultCategoryDataset ds) {
+        LineAndShapeRenderer renderer = new LineAndShapeRenderer();
+        renderer.setSeriesPaint(0, ACCENT);
+        renderer.setSeriesStroke(0, new BasicStroke(2.5f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        renderer.setSeriesShapesVisible(0, true);
+        renderer.setSeriesShape(0, new Ellipse2D.Double(-4, -4, 8, 8));
+        renderer.setSeriesFillPaint(0, Color.WHITE);
+        renderer.setUseFillPaint(true);
+
+        JFreeChart chart = buildCategoryChart(title, xLabel, yLabel, ds, renderer, false);
+        chart.getCategoryPlot().getDomainAxis()
+             .setCategoryLabelPositions(CategoryLabelPositions.UP_45);
+        return chart;
+    }
+
+    private JFreeChart groupedBarChart(String title, String xLabel, String yLabel, DefaultCategoryDataset ds) {
+        BarRenderer renderer = new BarRenderer() {
+            @Override
+            public Paint getItemPaint(int row, int col) {
+                return PALETTE[row % PALETTE.length];
+            }
+        };
+        renderer.setBarPainter(new StandardBarPainter());
+        renderer.setDrawBarOutline(false);
+        renderer.setShadowVisible(false);
+        renderer.setMaximumBarWidth(0.35);
+        renderer.setItemMargin(0.05);
+
+        return buildCategoryChart(title, xLabel, yLabel, ds, renderer, true);
+    }
+
+    private JFreeChart buildCategoryChart(String title, String xLabel, String yLabel,
+                                          DefaultCategoryDataset ds,
+                                          AbstractCategoryItemRenderer renderer,
+                                          boolean showLegend) {
         CategoryAxis domainAxis = new CategoryAxis(xLabel);
         domainAxis.setLabelFont(KR_BOLD);
         domainAxis.setLabelPaint(AXIS_CLR);
@@ -161,9 +327,6 @@ public class ChartService {
         domainAxis.setTickMarksVisible(false);
         domainAxis.setUpperMargin(0.02);
         domainAxis.setLowerMargin(0.02);
-        if (cols > 8) {
-            domainAxis.setCategoryLabelPositions(CategoryLabelPositions.UP_45);
-        }
 
         NumberAxis rangeAxis = new NumberAxis(yLabel);
         rangeAxis.setLabelFont(KR_BOLD);
@@ -183,7 +346,7 @@ public class ChartService {
         plot.setInsets(new RectangleInsets(15, 5, 5, 15));
         plot.setOrientation(PlotOrientation.VERTICAL);
 
-        JFreeChart chart = new JFreeChart(null, JFreeChart.DEFAULT_TITLE_FONT, plot, false);
+        JFreeChart chart = new JFreeChart(null, JFreeChart.DEFAULT_TITLE_FONT, plot, showLegend);
         chart.setBackgroundPaint(BG);
         chart.setPadding(new RectangleInsets(20, 20, 15, 20));
 
@@ -191,6 +354,14 @@ public class ChartService {
         textTitle.setPaint(TITLE_CLR);
         textTitle.setPadding(new RectangleInsets(5, 0, 15, 0));
         chart.setTitle(textTitle);
+
+        if (showLegend && chart.getLegend() != null) {
+            chart.getLegend().setItemFont(KR_REGULAR);
+            chart.getLegend().setItemPaint(AXIS_CLR);
+            chart.getLegend().setBackgroundPaint(Color.WHITE);
+            chart.getLegend().setBorder(0, 0, 0, 0);
+            chart.getLegend().setPosition(RectangleEdge.BOTTOM);
+        }
 
         return chart;
     }
