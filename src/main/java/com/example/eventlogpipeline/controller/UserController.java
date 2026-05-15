@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.Instant;
 import java.util.UUID;
 
 @RestController
@@ -23,11 +24,12 @@ public class UserController {
 
     @PostMapping("/login")
     public ResponseEntity<LoginResponse> login(@RequestBody LoginRequest request) {
-        User user = userService.login(request.userId(), request.deviceType());
+        User user = userService.login(request.userId(), request.deviceType(),
+                request.eventTime() != null ? request.eventTime() : Instant.now());
         return ResponseEntity.status(HttpStatus.OK)
                 .body(new LoginResponse(user.getUserId(), user.getUserGrade()));
     }
 
-    public record LoginRequest(UUID userId, DeviceType deviceType) {}
+    public record LoginRequest(UUID userId, DeviceType deviceType, Instant eventTime) {}
     public record LoginResponse(UUID userId, UserGrade userGrade) {}
 }

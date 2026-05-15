@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.UUID;
 
 @RestController
@@ -26,8 +27,10 @@ public class ProductController {
     public ResponseEntity<ProductResponse> getProduct(
             @PathVariable UUID productId,
             @RequestParam(required = false) UUID userId,
-            @RequestParam(required = false) DeviceType deviceType) {
-        Product product = productService.getProduct(productId, userId, deviceType);
+            @RequestParam(required = false) DeviceType deviceType,
+            @RequestParam(required = false) Instant eventTime) {
+        Product product = productService.getProduct(productId, userId, deviceType,
+                eventTime != null ? eventTime : Instant.now());
         return ResponseEntity.status(HttpStatus.OK).body(new ProductResponse(
                 product.getProductId(),
                 product.getProductName(),

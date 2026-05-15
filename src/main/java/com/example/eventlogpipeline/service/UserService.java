@@ -9,6 +9,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.util.UUID;
 
 @Service
@@ -19,10 +20,10 @@ public class UserService {
     private final EventLogService eventLogService;
 
     @Transactional
-    public User login(UUID userId, DeviceType deviceType) {
+    public User login(UUID userId, DeviceType deviceType, Instant eventTime) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new UserNotFoundException(userId));
-        eventLogService.log(user, EventType.LOGIN, null, deviceType);
+        eventLogService.log(user, EventType.LOGIN, null, deviceType, eventTime);
         return user;
     }
 }

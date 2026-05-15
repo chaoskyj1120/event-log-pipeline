@@ -12,6 +12,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.util.UUID;
 
 @Service
@@ -23,14 +24,14 @@ public class ProductService {
     private final EventLogService eventLogService;
 
     @Transactional
-    public Product getProduct(UUID productId, UUID userId, DeviceType deviceType) {
+    public Product getProduct(UUID productId, UUID userId, DeviceType deviceType, Instant eventTime) {
         Product product = productRepository.findById(productId)
                 .orElseThrow(() -> new ProductNotFoundException(productId));
 
         if (userId != null) {
             User user = userRepository.findById(userId)
                     .orElseThrow(() -> new UserNotFoundException(userId));
-            eventLogService.log(user, EventType.PAGE_VIEW, product, deviceType);
+            eventLogService.log(user, EventType.PAGE_VIEW, product, deviceType, eventTime);
         }
 
         return product;
