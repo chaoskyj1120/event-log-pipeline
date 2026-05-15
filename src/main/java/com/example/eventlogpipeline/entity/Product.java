@@ -46,12 +46,16 @@ public class Product {
     @Column(name = "discount", precision = 4, scale = 3)
     private BigDecimal discount;
 
+    @Column(name = "stock", nullable = false)
+    private int stock;
+
     @Builder
-    public Product(UUID productId, String productName, Category category, Integer price, BigDecimal discount) {
+    public Product(UUID productId, String productName, Category category, Integer price, BigDecimal discount, int stock) {
         this.productId = productId != null ? productId : UUID.randomUUID();
         this.productName = productName;
         this.category = category;
         this.price = price;
         this.discount = discount;
+        this.stock = stock;
     }
 }
