@@ -24,9 +24,12 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/event_log_pipeline
       SPRING_DATASOURCE_USERNAME: event_log_pipeline_user
       SPRING_DATASOURCE_PASSWORD: "000000"
-      SPRING_JPA_HIBERNATE_DDL_AUTO: update
+      SPRING_JPA_HIBERNATE_DDL_AUTO: create-drop
+      CHART_OUTPUT_DIR: /app/charts
     ports:
       - "8080:8080"
+    volumes:
+      - ./images/charts:/app/charts
 
 volumes:
   postgres_data:
