@@ -49,9 +49,12 @@ public class EventLog {
     @Column(name = "event_type", length = 50, nullable = false)
     private EventType eventType;
 
-    @CreationTimestamp
+    // 실서비스에서는 @CreationTimestamp를 사용해 INSERT 시점을 자동 기록한다.
+    // 현재는 이벤트 생성기에서 랜덤 시간대의 이벤트를 시뮬레이션하기 위해
+    // Builder로 직접 eventTime을 주입받도록 변경하였다.
     @Column(name = "event_time", nullable = false, updatable = false)
-    private Instant eventTime;
+    @Builder.Default
+    private Instant eventTime = Instant.now();
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "product_id")

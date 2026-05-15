@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.UUID;
 
 @Service
@@ -24,7 +25,7 @@ public class OrderService {
     private final EventLogService eventLogService;
 
     @Transactional
-    public Order createOrder(UUID userId, UUID productId, int quantity, DeviceType deviceType) {
+    public Order createOrder(UUID userId, UUID productId, int quantity, DeviceType deviceType, Instant eventTime) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new UserNotFoundException(userId));
         Product product = productRepository.findByIdWithLock(productId)
@@ -33,7 +34,7 @@ public class OrderService {
         try {
             product.decreaseStock(quantity);
         } catch (OutOfStockException e) {
-            eventLogService.logFailure(user, EventType.ORDER_FAILED, product, deviceType, "OUT_OF_STOCK");
+            eventLogService.logFailure(user, EventType.ORDER_FAILED, product, deviceType, "OUT_OF_STOCK", eventTime);
             throw e;
         }
 
@@ -47,7 +48,7 @@ public class OrderService {
                 .build();
 
         orderRepository.save(order);
-        eventLogService.log(user, EventType.ORDER_CREATED, product, deviceType);
+        eventLogService.log(user, EventType.ORDER_CREATED, product, deviceType, eventTime);
         return order;
     }
 }

@@ -17,6 +17,7 @@ import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
@@ -34,7 +35,7 @@ public class EventGenerator implements CommandLineRunner {
     @Value("${server.port:8080}")
     private int serverPort;
 
-    private static final int EVENT_COUNT = 100;
+    private static final int EVENT_COUNT = 1000;
     private final Random random = new Random();
     private RestTemplate restTemplate;
     private String baseUrl;
@@ -68,10 +69,17 @@ public class EventGenerator implements CommandLineRunner {
         log.info("=== 이벤트 생성 완료 ===");
     }
 
+    private Instant randomEventTime() {
+        long secondsInMonth = 30L * 24 * 60 * 60;
+        long randomSeconds = (long) (random.nextDouble() * secondsInMonth);
+        return Instant.now().minusSeconds(randomSeconds);
+    }
+
     private void sendLogin(User user, DeviceType deviceType, int index) {
         Map<String, Object> body = Map.of(
                 "userId", user.getUserId(),
-                "deviceType", deviceType.name()
+                "deviceType", deviceType.name(),
+                "eventTime", randomEventTime().toString()
         );
         try {
             post("/users/login", body);
@@ -84,7 +92,8 @@ public class EventGenerator implements CommandLineRunner {
     private void sendPageView(User user, Product product, DeviceType deviceType, int index) {
         String url = baseUrl + "/products/" + product.getProductId()
                 + "?userId=" + user.getUserId()
-                + "&deviceType=" + deviceType.name();
+                + "&deviceType=" + deviceType.name()
+                + "&eventTime=" + randomEventTime().toString();
         try {
             restTemplate.getForObject(url, Map.class);
             log.info("[{}/{}] PAGE_VIEW - user={}, product={}", index, EVENT_COUNT, user.getUserId(), product.getProductName());
@@ -97,8 +106,9 @@ public class EventGenerator implements CommandLineRunner {
         Map<String, Object> body = Map.of(
                 "userId", user.getUserId(),
                 "productId", product.getProductId(),
-                "quantity", random.nextInt(3) + 1,
-                "deviceType", deviceType.name()
+                "quantity", random.nextInt(50) + 1,
+                "deviceType", deviceType.name(),
+                "eventTime", randomEventTime().toString()
         );
         try {
             post("/orders", body);
@@ -123,8 +133,13 @@ public class EventGenerator implements CommandLineRunner {
         return userRepository.saveAll(List.of(
                 User.builder().userGrade(UserGrade.BRONZE).build(),
                 User.builder().userGrade(UserGrade.BRONZE).build(),
+                User.builder().userGrade(UserGrade.BRONZE).build(),
+                User.builder().userGrade(UserGrade.BRONZE).build(),
                 User.builder().userGrade(UserGrade.SILVER).build(),
                 User.builder().userGrade(UserGrade.SILVER).build(),
+                User.builder().userGrade(UserGrade.SILVER).build(),
+                User.builder().userGrade(UserGrade.GOLD).build(),
+                User.builder().userGrade(UserGrade.GOLD).build(),
                 User.builder().userGrade(UserGrade.GOLD).build()
         ));
     }
@@ -137,11 +152,14 @@ public class EventGenerator implements CommandLineRunner {
         Category clothing = categoryRepository.save(Category.builder().categoryName("의류").build());
 
         return productRepository.saveAll(List.of(
-                Product.builder().productName("노트북").category(electronics).price(1200000).discount(new BigDecimal("0.050")).stock(10).build(),
-                Product.builder().productName("스마트폰").category(electronics).price(800000).discount(new BigDecimal("0.100")).stock(5).build(),
-                Product.builder().productName("이어폰").category(electronics).price(150000).discount(new BigDecimal("0.200")).stock(3).build(),
-                Product.builder().productName("티셔츠").category(clothing).price(29000).discount(BigDecimal.ZERO).stock(50).build(),
-                Product.builder().productName("청바지").category(clothing).price(59000).discount(new BigDecimal("0.050")).stock(30).build()
+                Product.builder().productName("노트북").category(electronics).price(1200000).discount(new BigDecimal("0.050")).stock(200).build(),
+                Product.builder().productName("스마트폰").category(electronics).price(800000).discount(new BigDecimal("0.100")).stock(200).build(),
+                Product.builder().productName("이어폰").category(electronics).price(150000).discount(new BigDecimal("0.200")).stock(200).build(),
+                Product.builder().productName("태블릿").category(electronics).price(600000).discount(new BigDecimal("0.080")).stock(200).build(),
+                Product.builder().productName("스마트워치").category(electronics).price(350000).discount(new BigDecimal("0.150")).stock(200).build(),
+                Product.builder().productName("티셔츠").category(clothing).price(29000).discount(BigDecimal.ZERO).stock(200).build(),
+                Product.builder().productName("청바지").category(clothing).price(59000).discount(new BigDecimal("0.050")).stock(200).build(),
+                Product.builder().productName("패딩").category(clothing).price(180000).discount(new BigDecimal("0.100")).stock(200).build()
         ));
     }
 
