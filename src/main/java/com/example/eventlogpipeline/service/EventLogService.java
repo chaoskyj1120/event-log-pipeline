@@ -4,6 +4,7 @@ import com.example.eventlogpipeline.entity.*;
 import com.example.eventlogpipeline.repository.EventLogRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
@@ -25,7 +26,7 @@ public class EventLogService {
                 .build());
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void logFailure(User user, EventType eventType, Product product, DeviceType deviceType, String failedReason, Instant eventTime) {
         eventLogRepository.save(EventLog.builder()
                 .user(user)
