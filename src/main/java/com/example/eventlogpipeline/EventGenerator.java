@@ -2,13 +2,13 @@ package com.example.eventlogpipeline;
 
 import com.example.eventlogpipeline.entity.*;
 import com.example.eventlogpipeline.repository.CategoryRepository;
+import com.example.eventlogpipeline.repository.EventLogRepository;
 import com.example.eventlogpipeline.repository.ProductRepository;
 import com.example.eventlogpipeline.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
-import org.springframework.context.annotation.Profile;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -24,13 +24,13 @@ import java.util.Random;
 
 @Slf4j
 @Component
-@Profile("generate")
 @RequiredArgsConstructor
 public class EventGenerator implements CommandLineRunner {
 
     private final UserRepository userRepository;
     private final ProductRepository productRepository;
     private final CategoryRepository categoryRepository;
+    private final EventLogRepository eventLogRepository;
 
     @Value("${server.port:8080}")
     private int serverPort;
@@ -44,6 +44,11 @@ public class EventGenerator implements CommandLineRunner {
     public void run(String... args) {
         restTemplate = new RestTemplate();
         baseUrl = "http://localhost:" + serverPort;
+
+        if (eventLogRepository.count() > 0) {
+            log.info("=== 이벤트 데이터가 이미 존재합니다. 생성을 건너뜁니다. ===");
+            return;
+        }
 
         List<User> users = initUsers();
         List<Product> products = initProducts();
