@@ -111,7 +111,7 @@ public class EventGenerator implements CommandLineRunner {
         Map<String, Object> body = Map.of(
                 "userId", user.getUserId(),
                 "productId", product.getProductId(),
-                "quantity", random.nextInt(50) + 1,
+                "quantity", random.nextInt(30) + 1,
                 "deviceType", deviceType.name(),
                 "eventTime", randomEventTime().toString()
         );
