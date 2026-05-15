@@ -83,17 +83,16 @@ ORDER BY EXTRACT(DOW FROM event_time);
 -- 디바이스 분석
 -- ================================================
 
--- 6. 디바이스 타입별 주문율
--- 어떤 디바이스에서 주문이 더 많이 발생하는지 파악
+-- 6. 디바이스 타입별 주문 비율
+-- 전체 주문 중 각 디바이스가 차지하는 비율 파악
 SELECT device_type,
-       COUNT(CASE WHEN event_type = 'ORDER_CREATED' THEN 1 END)            AS order_count,
-       COUNT(*)                                                             AS total_events,
-       ROUND(COUNT(CASE WHEN event_type = 'ORDER_CREATED' THEN 1 END)::numeric /
-             COUNT(*) * 100, 2)                                             AS order_rate_percent
+       COUNT(*)                                                             AS order_count,
+       ROUND(COUNT(*)::numeric / SUM(COUNT(*)) OVER () * 100, 2)           AS order_rate_percent
 FROM event_logs
-WHERE device_type IS NOT NULL
+WHERE event_type = 'ORDER_CREATED'
+  AND device_type IS NOT NULL
 GROUP BY device_type
-ORDER BY order_rate_percent DESC;
+ORDER BY order_count DESC;
 
 
 -- ================================================
@@ -164,3 +163,119 @@ FROM orders o
          JOIN categories c ON p.category_id = c.category_id
 GROUP BY c.category_id, c.category_name
 ORDER BY total_quantity DESC;
+
+
+-- ================================================
+-- 매출 분석
+-- ================================================
+
+-- 12. 상품별 총 매출
+-- 어떤 상품이 가장 많은 매출을 올렸는지 파악
+SELECT p.product_name,
+       COUNT(o.order_id)                                                    AS order_count,
+       SUM(o.quantity)                                                      AS total_quantity,
+       SUM(o.price_at_order * o.quantity)                                   AS total_revenue,
+       ROUND(AVG(o.price_at_order * o.quantity), 0)                         AS avg_order_amount
+FROM orders o
+         JOIN products p ON o.product_id = p.product_id
+GROUP BY p.product_id, p.product_name
+ORDER BY total_revenue DESC;
+
+
+-- 13. 일별 주문 추이
+-- 날짜별 주문 건수와 매출 흐름 파악
+SELECT DATE(created_at)                                                     AS order_date,
+       COUNT(*)                                                             AS order_count,
+       SUM(quantity)                                                        AS total_quantity,
+       SUM(price_at_order * quantity)                                       AS daily_revenue
+FROM orders
+GROUP BY order_date
+ORDER BY order_date;
+
+
+-- ================================================
+-- 할인 분석
+-- ================================================
+
+-- 14. 할인율 구간별 주문 패턴
+-- 할인율에 따라 주문 행동이 달라지는지 파악
+SELECT CASE
+           WHEN discount_at_order IS NULL OR discount_at_order = 0 THEN '할인 없음'
+           WHEN discount_at_order < 0.1                            THEN '10% 미만'
+           WHEN discount_at_order < 0.2                            THEN '10~20%'
+           WHEN discount_at_order < 0.3                            THEN '20~30%'
+           ELSE '30% 이상'
+       END                                                                  AS discount_range,
+       COUNT(*)                                                             AS order_count,
+       SUM(quantity)                                                        AS total_quantity,
+       ROUND(AVG(price_at_order * quantity), 0)                             AS avg_order_amount
+FROM orders
+GROUP BY discount_range
+ORDER BY order_count DESC;
+
+
+-- 15. 할인율별 구매량
+-- 실제 할인율 값 기준으로 구매량이 어떻게 분포하는지 파악
+SELECT ROUND(COALESCE(discount_at_order, 0) * 100, 0)::int                 AS discount_percent,
+       COUNT(*)                                                             AS order_count,
+       SUM(quantity)                                                        AS total_quantity,
+       ROUND(AVG(price_at_order * quantity), 0)                             AS avg_order_amount
+FROM orders
+GROUP BY discount_percent
+ORDER BY discount_percent;
+
+
+-- 16. 가격별 구매량
+-- 주문 시점 가격 기준으로 어느 가격대 상품이 가장 많이 팔리는지 파악
+SELECT CASE
+           WHEN price_at_order < 50000   THEN '5만원 미만'
+           WHEN price_at_order < 200000  THEN '5~20만원'
+           WHEN price_at_order < 500000  THEN '20~50만원'
+           WHEN price_at_order < 1000000 THEN '50~100만원'
+           ELSE '100만원 이상'
+       END                                                                  AS price_range,
+       COUNT(*)                                                             AS order_count,
+       SUM(quantity)                                                        AS total_quantity,
+       ROUND(AVG(price_at_order), 0)                                        AS avg_price
+FROM orders
+GROUP BY price_range
+ORDER BY MIN(price_at_order);
+
+
+-- ================================================
+-- 전환 실패 분석
+-- ================================================
+
+-- 17. 상품별 주문 실패율
+-- 재고 부족 등으로 주문 실패가 집중되는 상품 파악
+SELECT p.product_name,
+       COUNT(CASE WHEN e.event_type = 'ORDER_CREATED' THEN 1 END)           AS success_count,
+       COUNT(CASE WHEN e.event_type = 'ORDER_FAILED'  THEN 1 END)           AS fail_count,
+       COUNT(CASE WHEN e.event_type IN ('ORDER_CREATED', 'ORDER_FAILED') THEN 1 END)
+                                                                             AS total_attempts,
+       ROUND(COUNT(CASE WHEN e.event_type = 'ORDER_FAILED' THEN 1 END)::numeric /
+             NULLIF(COUNT(CASE WHEN e.event_type IN ('ORDER_CREATED', 'ORDER_FAILED') THEN 1 END), 0) * 100, 1)
+                                                                             AS fail_rate_percent
+FROM event_logs e
+         JOIN products p ON e.product_id = p.product_id
+WHERE e.event_type IN ('ORDER_CREATED', 'ORDER_FAILED')
+GROUP BY p.product_id, p.product_name
+ORDER BY fail_rate_percent DESC;
+
+
+-- ================================================
+-- 세그먼트 교차 분석
+-- ================================================
+
+-- 18. 유저 등급별 디바이스 선호도
+-- 등급에 따라 사용하는 디바이스 비율이 다른지 파악
+SELECT u.user_grade,
+       e.device_type,
+       COUNT(*)                                                             AS event_count,
+       ROUND(COUNT(*)::numeric /
+             SUM(COUNT(*)) OVER (PARTITION BY u.user_grade) * 100, 1)      AS ratio_percent
+FROM event_logs e
+         JOIN users u ON e.user_id = u.user_id
+WHERE e.device_type IS NOT NULL
+GROUP BY u.user_grade, e.device_type
+ORDER BY u.user_grade, event_count DESC;
