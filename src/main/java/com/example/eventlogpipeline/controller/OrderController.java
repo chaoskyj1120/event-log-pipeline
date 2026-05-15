@@ -25,7 +25,8 @@ public class OrderController {
 
     @PostMapping
     public ResponseEntity<OrderResponse> createOrder(@RequestBody CreateOrderRequest request) {
-        Order order = orderService.createOrder(request.userId(), request.productId(), request.quantity(), request.deviceType());
+        Order order = orderService.createOrder(request.userId(), request.productId(), request.quantity(), request.deviceType(),
+                request.eventTime() != null ? request.eventTime() : Instant.now());
         return ResponseEntity.status(HttpStatus.CREATED).body(new OrderResponse(
                 order.getOrderId(),
                 order.getOrderStatus(),
@@ -36,7 +37,7 @@ public class OrderController {
         ));
     }
 
-    public record CreateOrderRequest(UUID userId, UUID productId, int quantity, DeviceType deviceType) {}
+    public record CreateOrderRequest(UUID userId, UUID productId, int quantity, DeviceType deviceType, Instant eventTime) {}
     public record OrderResponse(UUID orderId, OrderStatus orderStatus, int quantity, BigDecimal priceAtOrder,
                                 BigDecimal discountAtOrder, Instant createdAt) {}
 }
