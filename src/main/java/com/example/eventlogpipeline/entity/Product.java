@@ -1,5 +1,6 @@
 package com.example.eventlogpipeline.entity;
 
+import com.example.eventlogpipeline.exception.OutOfStockException;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -57,5 +58,12 @@ public class Product {
         this.price = price;
         this.discount = discount;
         this.stock = stock;
+    }
+
+    public void decreaseStock(int quantity) {
+        if (this.stock < quantity) {
+            throw new OutOfStockException(this.productId);
+        }
+        this.stock -= quantity;
     }
 }
