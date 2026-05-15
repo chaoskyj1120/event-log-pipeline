@@ -2,7 +2,6 @@ package com.example.eventlogpipeline.controller;
 
 import com.example.eventlogpipeline.entity.DeviceType;
 import com.example.eventlogpipeline.entity.Order;
-import com.example.eventlogpipeline.entity.OrderStatus;
 import com.example.eventlogpipeline.service.OrderService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -29,7 +28,6 @@ public class OrderController {
                 request.eventTime() != null ? request.eventTime() : Instant.now());
         return ResponseEntity.status(HttpStatus.CREATED).body(new OrderResponse(
                 order.getOrderId(),
-                order.getOrderStatus(),
                 order.getQuantity(),
                 order.getPriceAtOrder(),
                 order.getDiscountAtOrder(),
@@ -38,6 +36,6 @@ public class OrderController {
     }
 
     public record CreateOrderRequest(UUID userId, UUID productId, int quantity, DeviceType deviceType, Instant eventTime) {}
-    public record OrderResponse(UUID orderId, OrderStatus orderStatus, int quantity, BigDecimal priceAtOrder,
+    public record OrderResponse(UUID orderId, int quantity, BigDecimal priceAtOrder,
                                 BigDecimal discountAtOrder, Instant createdAt) {}
 }
