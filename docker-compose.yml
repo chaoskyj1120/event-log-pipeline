@@ -7,6 +7,8 @@ services:
       POSTGRES_PASSWORD: "000000"
     ports:
       - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U event_log_pipeline_user -d event_log_pipeline" ]
       interval: 5s
@@ -22,6 +24,9 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/event_log_pipeline
       SPRING_DATASOURCE_USERNAME: event_log_pipeline_user
       SPRING_DATASOURCE_PASSWORD: "000000"
-      SPRING_PROFILES_ACTIVE: generate
+      SPRING_JPA_HIBERNATE_DDL_AUTO: update
     ports:
       - "8080:8080"
+
+volumes:
+  postgres_data:
