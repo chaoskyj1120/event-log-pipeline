@@ -141,6 +141,19 @@ FROM (SELECT user_id, COUNT(*) AS order_count
       GROUP BY user_id) order_stats;
 
 
+-- 11. 카테고리별 판매량
+-- 카테고리별 총 주문 수량 및 주문 건수 비교
+SELECT c.category_name,
+       COUNT(o.order_id)                                                    AS order_count,
+       SUM(o.quantity)                                                      AS total_quantity,
+       ROUND(AVG(o.quantity), 1)                                            AS avg_quantity
+FROM orders o
+         JOIN products p ON o.product_id = p.product_id
+         JOIN categories c ON p.category_id = c.category_id
+GROUP BY c.category_id, c.category_name
+ORDER BY total_quantity DESC;
+
+
 -- 10. 등급별 구매력
 -- 등급별 총 주문 금액, 평균 주문 금액, 1인당 주문 횟수 비교
 SELECT u.user_grade,
