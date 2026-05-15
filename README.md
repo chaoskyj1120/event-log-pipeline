@@ -4,14 +4,23 @@
 
 ## 실행 방법
 
+### 사전 요구사항
+
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) 설치 및 실행
+
+### 실행
+
 ```bash
+git clone https://github.com/chaoskyj1120/event-log-pipeline.git
+cd event-log-pipeline
 docker-compose up --build
 ```
 
 실행 시 PostgreSQL DB와 Spring Boot 앱이 함께 시작되며, 앱 시작 직후 EventGenerator가 자동으로 1000건의 이벤트를 생성하고 저장합니다.  
 이미 데이터가 존재하면 이벤트 생성을 건너뜁니다.
 
-데이터를 초기화하고 싶을 때:
+### 데이터 초기화 후 재실행
+
 ```bash
 docker-compose down -v
 docker-compose up --build
