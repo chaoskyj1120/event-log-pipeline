@@ -41,7 +41,6 @@ public class OrderService {
         Order order = Order.builder()
                 .user(user)
                 .product(product)
-                .orderStatus(OrderStatus.PENDING)
                 .quantity(quantity)
                 .priceAtOrder(BigDecimal.valueOf(product.getPrice()))
                 .discountAtOrder(product.getDiscount())

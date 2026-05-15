@@ -60,9 +60,6 @@ public class EventLog {
     @JoinColumn(name = "product_id")
     private Product product;
 
-    @Column(name = "page_url", length = 255)
-    private String pageUrl;
-
     @Enumerated(EnumType.STRING)
     @Column(name = "device_type", length = 20)
     private DeviceType deviceType;
