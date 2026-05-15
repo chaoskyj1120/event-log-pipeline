@@ -53,6 +53,9 @@ public class Order {
     @Column(name = "order_status", length = 20, nullable = false)
     private OrderStatus orderStatus;
 
+    @Column(name = "quantity", nullable = false)
+    private int quantity;
+
     @Column(name = "price_at_order", precision = 10, scale = 2, nullable = false)
     private BigDecimal priceAtOrder;
 
@@ -62,4 +65,5 @@ public class Order {
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
+
 }
