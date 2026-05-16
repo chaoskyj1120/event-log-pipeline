@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: event-log-pipeline
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: event-log-pipeline
+  template:
+    metadata:
+      labels:
+        app: event-log-pipeline
+    spec:
+      containers:
+        - name: app
+          image: event-log-pipeline:latest
+          ports:
+            - containerPort: 8080
+          env:
+            - name: SPRING_DATASOURCE_URL
+              value: jdbc:postgresql://postgres-service:5432/event_log_pipeline
+            - name: SPRING_DATASOURCE_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: event-log-pipeline-secret
+                  key: db-username
+            - name: SPRING_DATASOURCE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: event-log-pipeline-secret
+                  key: db-password
+            - name: SPRING_JPA_HIBERNATE_DDL_AUTO
+              value: validate
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "500m"
+              memory: "1Gi"
