@@ -173,6 +173,82 @@ EventGenerator → POST /users/login      → LOGIN 이벤트 기록
 
 ---
 
+## 선택 B. AWS 아키텍처 설계
+
+이 파이프라인(이벤트 생성 → 저장 → 시각화)을 AWS에서 운영한다면 두 가지 방식을 고려할 수 있습니다.
+
+---
+
+### 방식 1. EC2 + ECS
+
+```
+개발자
+  ↓ docker build & push
+ECR (Docker 이미지 저장)
+  ↓ 이미지 가져옴
+EC2 + ECS (Spring Boot 앱 24시간 실행)
+  ├── REST API       → 이벤트 수신 및 저장
+  └── ChartService   → 차트 생성
+        ↓                     ↓
+      RDS (PostgreSQL)       S3 (차트 이미지)
+```
+
+| AWS 서비스 | 역할 | 현재 프로젝트 대응 |
+|---|---|---|
+| ECR | Docker 이미지 저장소 | Docker Hub 대신 |
+| EC2 | 앱이 실행되는 서버 | 로컬 컴퓨터 대신 |
+| ECS | EC2 위에서 컨테이너 관리 | docker-compose 대신 |
+| RDS | 관리형 PostgreSQL | docker-compose의 db 서비스 대신 |
+| S3 | 차트 이미지 저장 | 로컬 `images/charts/` 폴더 대신 |
+
+**선택 이유**
+
+REST API 서버는 이벤트를 상시 수신해야 하므로 24시간 켜있어야 합니다. 이 경우 EC2 예약 구매가 Fargate보다 저렴합니다. ChartService는 같은 앱 안에 포함되어 있어 별도로 분리하지 않아도 되므로 구성이 단순합니다.
+
+---
+
+### 방식 2. EKS (Kubernetes)
+
+```
+개발자
+  ↓ docker build & push
+ECR (Docker 이미지 저장)
+  ↓ 이미지 가져옴
+EKS (Kubernetes 클러스터)
+  ├── Deployment → 파드 3개 실행 (로드 밸런싱)
+  ├── Service    → 트래픽 분산 및 고정 엔드포인트
+  └── Secret     → DB 자격증명 관리
+        ↓                     ↓
+      RDS (PostgreSQL)       S3 (차트 이미지)
+```
+
+| AWS 서비스 | 역할 |
+|---|---|
+| ECR | Docker 이미지 저장소 |
+| EKS | EC2 + ECS를 대체하는 Kubernetes 클러스터 |
+| RDS | 관리형 PostgreSQL |
+| S3 | 차트 이미지 저장 |
+
+**선택 이유**
+
+EKS는 EC2와 ECS를 하나로 합친 것으로, Kubernetes가 서버 관리·로드 밸런싱·자동 복구를 모두 처리합니다. `k8s/` 디렉토리에 작성한 manifest 파일을 그대로 EKS에 적용할 수 있습니다.
+
+---
+
+### 두 방식 비교
+
+| | EC2 + ECS | EKS |
+|---|---|---|
+| 난이도 | 쉬움 | 복잡 |
+| 로드 밸런싱 | ALB 별도 설정 필요 | Service로 자동 처리 |
+| 자동 복구 | ECS가 처리 | Kubernetes가 처리 |
+| 비용 | 저렴 | EKS 클러스터 비용 추가 |
+| 적합한 규모 | 소~중규모 | 대규모 |
+
+이 프로젝트 규모에서는 **EC2 + ECS**가 더 단순하고 비용 효율적입니다. 트래픽이 많아지고 세밀한 배포 제어가 필요해지면 **EKS**로 전환하는 것이 적합합니다.
+
+---
+
 ## 선택 A. Kubernetes 배포 설정
 
 `k8s/` 디렉토리에 이벤트 생성기 앱을 Kubernetes에 배포하기 위한 manifest 파일을 작성했습니다.
