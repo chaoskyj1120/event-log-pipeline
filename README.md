@@ -178,26 +178,23 @@ EventGenerator → POST /users/login      → LOGIN 이벤트 기록
 **전체 이벤트 중 성공과 실패 비율**
 전체 이벤트 중 정상 처리된 이벤트와 실패한 이벤트의 비율을 나타냅니다.
 
-![전체 이벤트 중 성공과 실패 비율](images/success_fail_ratio.png)
+  남길 내용 (feat/create-chart 쪽):
+  ![전체 이벤트 중 성공과 실패 비율](images/success_fail_ratio.png)
 
-**시간대별 이벤트 발생량**
-하루 중 어느 시간대에 이벤트가 집중되는지 파악합니다. 서비스 피크 타임을 확인할 수 있습니다.
+  **시간대별 이벤트 발생량**
+  ...
+  ![시간대별 이벤트 발생량](images/hourly_events.png)
 
-![시간대별 이벤트 발생량](images/hourly_events.png)
+  **디바이스 타입별 주문율**
+  ...
+  ![디바이스 타입별 주문율](images/device_order_rate.png)
 
-**디바이스 타입별 주문율**
-MOBILE과 DESKTOP 디바이스에서 발생한 이벤트 중 주문으로 이어진 비율을 비교합니다.
+  **상품별 주문 실패율**
+  ...
+  ![상품별 주문 실패율](images/product_fail_rate.png)
 
-![디바이스 타입별 주문율](images/device_order_rate.png)
-
-**상품별 주문 실패율**
-상품별로 주문 시도 중 실패(재고 부족)가 발생한 비율을 보여줍니다. 재고 운영 이슈를 탐지하는 데 활용할 수 있습니다.
-
-![상품별 주문 실패율](images/product_fail_rate.png)
-
-**카테고리별 판매량**
-카테고리별 총 주문 수량을 비교하여 어떤 카테고리가 가장 많이 판매되는지 파악합니다.
-
-![카테고리별 판매량](images/category_sales.png)
+  **카테고리별 판매량**
+  ...
+  ![카테고리별 판매량](images/category_sales.png)
 
 ---
