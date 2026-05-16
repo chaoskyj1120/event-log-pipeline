@@ -173,6 +173,62 @@ EventGenerator → POST /users/login      → LOGIN 이벤트 기록
 
 ---
 
+## 선택 A. Kubernetes 배포 설정
+
+`k8s/` 디렉토리에 이벤트 생성기 앱을 Kubernetes에 배포하기 위한 manifest 파일을 작성했습니다.
+
+```
+k8s/
+├── secret.yaml      # DB 접속 자격증명
+├── deployment.yaml  # 앱 배포 설정
+└── service.yaml     # 앱 네트워크 노출
+```
+
+### 리소스 역할
+
+**Secret** (`secret.yaml`)
+
+DB 접속에 필요한 사용자명과 비밀번호를 저장합니다. 평문으로 환경변수에 노출하지 않고 Secret으로 분리하여 `deployment.yaml`에서 참조합니다.
+
+```yaml
+stringData:
+  db-username: event_log_pipeline_user
+  db-password: "000000"
+```
+
+**Deployment** (`deployment.yaml`)
+
+이벤트 생성기(EventGenerator)를 포함한 Spring Boot 앱의 배포 방식을 정의합니다. 주요 설정은 아래와 같습니다.
+
+- **replicas: 3** — 파드를 3개 동시에 실행합니다. Service가 3개의 파드에 트래픽을 균등하게 분산하여 로드 밸런싱을 구현합니다. 파드 1개가 장애가 나도 나머지 2개가 요청을 계속 처리합니다.
+- **resources** — 각 파드의 CPU와 메모리 사용량을 제한합니다. 파드가 여러 개 실행될 때 한 파드가 서버 자원을 독점하는 것을 방지합니다.
+  - `requests`: 파드 실행에 보장되는 최소 자원 (CPU 250m, 메모리 512Mi)
+  - `limits`: 파드가 사용할 수 있는 최대 자원 (CPU 500m, 메모리 1Gi)
+- **env** — DB 접속 정보를 Secret에서 참조하여 주입합니다.
+
+```
+요청
+  ↓
+Service
+  ├── 파드 1 (Spring Boot + EventGenerator)
+  ├── 파드 2 (Spring Boot + EventGenerator)
+  └── 파드 3 (Spring Boot + EventGenerator)
+```
+
+**Service** (`service.yaml`)
+
+Deployment가 생성한 파드에 고정된 네트워크 주소를 부여합니다. 파드는 재시작될 때마다 IP가 바뀌지만, Service 이름(`event-log-pipeline-service`)으로 항상 동일하게 접근할 수 있습니다. 내부적으로 살아있는 파드에만 트래픽을 전달하므로, 장애 파드로 요청이 가는 것을 방지합니다.
+
+### 리소스 선택 이유
+
+| 리소스 | 선택 이유 |
+|---|---|
+| Secret | DB 비밀번호를 코드나 환경변수에 평문으로 노출하지 않기 위해 |
+| Deployment | 파드 3개로 로드 밸런싱, 장애 시 자동 재시작, 무중단 롤링 배포를 위해 |
+| Service | 파드 IP는 재시작마다 바뀌므로, 고정 엔드포인트와 트래픽 분산을 위해 |
+
+---
+
 ## Step 5. 결과 시각화
 
 **전체 이벤트 중 성공과 실패 비율**
