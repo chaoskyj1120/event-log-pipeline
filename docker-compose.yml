@@ -14,14 +14,13 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
-
   app:
     build: .
     depends_on:
       db:
         condition: service_healthy
     environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/event_log_pipeline
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/event_log_pipeline?sslmode=disable
       SPRING_DATASOURCE_USERNAME: event_log_pipeline_user
       SPRING_DATASOURCE_PASSWORD: "000000"
       SPRING_JPA_HIBERNATE_DDL_AUTO: create-drop
@@ -30,6 +29,5 @@ services:
       - "8080:8080"
     volumes:
       - ./images/charts:/app/charts
-
 volumes:
   postgres_data:
