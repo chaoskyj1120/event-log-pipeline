@@ -7,6 +7,9 @@
 ### 사전 요구사항
 - [Git](https://git-scm.com/downloads) 설치
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/) 설치 및 실행
+- WSL2 설치 (Windows 전용)
+  - 터미널(명령 프롬프트 또는 PowerShell)을 **관리자 권한**으로 열고 실행:
+`wsl --install`
 
 ### 실행
 
