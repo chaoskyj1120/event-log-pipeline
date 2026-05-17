@@ -5,7 +5,7 @@
 ## 실행 방법
 
 ### 사전 요구사항
-
+- [Git](https://git-scm.com/downloads) 설치
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/) 설치 및 실행
 
 ### 실행
