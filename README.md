@@ -26,24 +26,6 @@ docker-compose down -v
 docker-compose up --build
 ```
 
-### 주의사항: 로컬 PostgreSQL 포트 충돌
-
-DataGrip으로 데이터를 확인하려는데 데이터가 보이지 않는다면, 로컬에 설치된 PostgreSQL과 Docker PostgreSQL이 같은 `5432` 포트를 사용하여 충돌이 발생한 것일 수 있습니다.  
-이때 DataGrip은 Docker DB가 아닌 로컬 DB에 연결되어 있어 Docker에서 생성한 이벤트 데이터가 보이지 않습니다.
-
-**해결 방법 1**: 로컬 PostgreSQL 서비스를 중지하면 DataGrip에서 `localhost:5432`로 Docker DB에 정상적으로 접속할 수 있습니다.
-
-```powershell
-# 관리자 권한 PowerShell에서 실행
-Stop-Service postgresql*
-```
-
-**해결 방법 2**: 서비스를 중지하지 않더라도 아래 명령어로 Docker PostgreSQL에 직접 접속해 쿼리를 실행할 수 있습니다.
-
-```bash
-docker exec -it event-log-pipeline-db-1 psql -U event_log_pipeline_user -d event_log_pipeline
-```
-
 ---
 
 ## Step 1. 이벤트 생성기 작성
@@ -82,7 +64,7 @@ EventGenerator → POST /users/login      → LOGIN 이벤트 기록
 - 디바이스 타입: MOBILE, DESKTOP
 - 주문 수량: 1 ~ 30개 (랜덤)
 - 이벤트 시각: 최근 30일 이내 랜덤
-
+- 상품 재고: 200개
 ---
 
 ## Step 2. 로그 저장
@@ -95,12 +77,14 @@ EventGenerator → POST /users/login      → LOGIN 이벤트 기록
 
 **선택 이유**
 
-이벤트 로그는 사용자, 상품, 주문과 **관계**를 가지는 정형 데이터입니다. 관계형 DB가 가장 적합합니다.  
+이벤트 로그는 사용자, 상품, 주문과 **관계**를 가지는 정형 데이터입니다. 관계형 DB가 가장 적합하다고 생각합니다.  
 시간대별, 유저별, 디바이스별 집계와 같은 **복잡한 분석 쿼리**를 SQL로 직관적으로 작성할 수 있으며, 인덱스를 활용한 빠른 조회가 가능합니다.
 
 ### 스키마
 
 **event_logs**
+
+이벤트 파이프라인의 핵심 테이블입니다. 모든 사용자 행동(로그인, 조회, 주문)을 단일 테이블에 기록하여 이벤트 타입별·시간대별·디바이스별 통합 분석이 가능합니다. `product_id`를 nullable로 설계해 상품과 무관한 LOGIN 이벤트도 동일한 구조로 저장합니다.
 
 | 컬럼 | 타입 | 설명 | 인덱스 |
 |---|---|---|---|
@@ -115,6 +99,8 @@ EventGenerator → POST /users/login      → LOGIN 이벤트 기록
 
 **users**
 
+등급(BRONZE / SILVER / GOLD) 기반의 구매력 분석과 재구매 유저 비율 분석에 사용됩니다. 분석에 필요한 최소한의 컬럼만 유지해 단순하게 설계했습니다.
+
 | 컬럼 | 타입 | 설명 |
 |---|---|---|
 | user_id | UUID | PK |
@@ -122,6 +108,8 @@ EventGenerator → POST /users/login      → LOGIN 이벤트 기록
 | created_at | TIMESTAMP | 가입 시각 |
 
 **products**
+
+상품별 매출·판매량·주문 실패율 분석의 기준이 되는 테이블입니다. `price`와 `discount`를 분리 저장하여 주문 시점의 실제 결제 금액을 orders 테이블에서 별도로 추적할 수 있도록 했습니다. `stock`은 ORDER_FAILED(재고 부족) 이벤트 발생의 기준이 됩니다.
 
 | 컬럼 | 타입 | 설명 | 인덱스 |
 |---|---|---|---|
@@ -133,6 +121,8 @@ EventGenerator → POST /users/login      → LOGIN 이벤트 기록
 | stock | INTEGER | 재고 수량 (NOT NULL) | |
 
 **orders**
+
+주문 성공(ORDER_CREATED) 시점의 가격과 할인율을 `price_at_order`, `discount_at_order`로 스냅샷 저장합니다. 이후 상품 가격이 변경되더라도 주문 당시의 정확한 매출을 계산할 수 있도록 하기 위해서입니다.
 
 | 컬럼 | 타입 | 설명 | 인덱스 |
 |---|---|---|---|
@@ -146,6 +136,8 @@ EventGenerator → POST /users/login      → LOGIN 이벤트 기록
 
 **categories**
 
+상품을 전자기기·의류 등으로 분류하여 카테고리별 판매량 분석에 활용합니다. products 테이블과 분리하여 카테고리명 변경 시 products를 수정하지 않아도 되도록 설계했습니다.
+
 | 컬럼 | 타입 | 설명 |
 |---|---|---|
 | category_id | UUID | PK |
@@ -155,74 +147,82 @@ EventGenerator → POST /users/login      → LOGIN 이벤트 기록
 
 ## Step 3. 데이터 집계 분석
 
-`analytics.sql` 파일에 10개의 분석 쿼리를 작성했습니다. r
+`analytics.sql` 파일에 차트 생성에 사용되는 11개의 분석 쿼리를 작성했습니다.
 
 | 번호 | 분석 항목 |
 |---|---|
 | 1 | 이벤트 타입별 발생 횟수 |
-| 2 | 정상 / 실패 이벤트 비율 |
-| 3 | 상품별 조회수 대비 구매 비율 |
-| 4 | 시간대별 이벤트 발생량 및 주문 비율 |
-| 5 | 요일별 주문율 |
-| 6 | 디바이스 타입별 주문율 |
-| 7 | 주문 실패 원인별 비율 |
-| 8 | 유저별 총 이벤트 수 |
-| 9 | 재구매 유저 비율 |
-| 10 | 등급별 구매력 분석 |
-| 11 | 카테고리별 판매량 |
+| 2 | 전체 이벤트 중 성공과 실패 비율 |
+| 3 | 시간대별 이벤트 발생량 |
+| 4 | 디바이스 타입별 주문율 |
+| 5 | 카테고리별 판매량 |
+| 6 | 상품별 총 매출 |
+| 7 | 상품별 주문 실패율 |
+| 8 | 할인율 구간별 구매량 |
+| 9 | 할인율별 구매량 |
+| 10 | 가격별 구매량 |
+| 11 | 유저 등급별 디바이스 선호도 |
+
+### ChartService
+
+`ChartService`는 위 쿼리를 실행하고 그 결과를 JFreeChart 라이브러리를 사용해 PNG 차트 이미지로 저장합니다.  
+앱 시작 시 `ChartScheduler`가 `ChartService.generateAll()`을 호출하여 11개의 차트를 자동으로 생성합니다.  
+생성된 이미지는 `images/charts/` 디렉토리에 저장됩니다.
+
+| 차트 파일 | 설명 | 차트 종류 |
+|---|---|---|
+| `event_type_count.png` | 이벤트 타입별 발생 횟수 | 막대 차트 |
+| `success_fail_ratio.png` | 전체 이벤트 중 성공과 실패 비율 | 도넛 차트 |
+| `hourly_events.png` | 시간대별 이벤트 발생량 | 막대 차트 |
+| `device_order_rate.png` | 디바이스 타입별 주문율 | 막대 차트 |
+| `category_sales.png` | 카테고리별 판매량 | 막대 차트 |
+| `product_revenue.png` | 상품별 총 매출 | 막대 차트 |
+| `product_fail_rate.png` | 상품별 주문 실패율 | 막대 차트 |
+| `discount_range_quantity.png` | 할인율 구간별 구매량 | 막대 차트 |
+| `discount_rate_quantity.png` | 할인율별 구매량 | 막대 차트 |
+| `price_range_quantity.png` | 가격별 구매량 | 막대 차트 |
+| `grade_device.png` | 유저 등급별 디바이스 선호도 | 그룹 막대 차트 |
 
 ---
 
-## 선택 B. AWS 아키텍처 설계
+## Step 4. Docker로 실행 가능하게 만들기
 
-### EC2 + ECS
+`docker-compose.yml`을 작성하여 `docker-compose up --build` 한 번으로 전체 스택이 실행되도록 구성했습니다.
 
-![시스템 아키텍처](images/시스템%20아키텍쳐.png)
+- **앱 + DB 함께 구성**: PostgreSQL 컨테이너와 Spring Boot 앱 컨테이너를 함께 정의했습니다.
+- **이벤트 생성 → 저장 자동화**: 앱 시작 직후 `EventGenerator`가 자동으로 실행되어 1000건의 이벤트를 생성하고 저장합니다.
 
-```mermaid
-flowchart LR
-    User[사용자]
+---
 
-    subgraph AWS
-        ECR[ECR\nDocker 이미지]
+## Step 5. 결과 시각화
 
-        subgraph EC2[EC2 Instance]
-            subgraph ECS[ECS Cluster]
-                subgraph Service[ECS Service]
-                    Container["Spring Boot\nREST API + ChartService"]
-                end
-            end
-        end
+`ChartService`가 생성한 차트 이미지 예시입니다.
 
-        RDS[("RDS PostgreSQL\nevent_logs\nusers / products\norders")]
-        S3[S3\nchart-analysis.png]
-    end
+**전체 이벤트 중 성공과 실패 비율**
+전체 이벤트 중 정상 처리된 이벤트와 실패한 이벤트의 비율을 나타냅니다.
+![전체 이벤트 중 성공과 실패 비율](images/success_fail_ratio.png)
 
-    User -->|"로그인 / 상품 조회 / 주문"| Container
-    ECR -->|이미지 pull| Service
-    Container -->|이벤트 저장| RDS
-    Container -->|분석 쿼리 실행| RDS
-    Container -->|차트 이미지 저장| S3
-```
+**시간대별 이벤트 발생량**
+0시부터 23시까지 시간대별로 이벤트가 얼마나 발생했는지 파악합니다.
+![시간대별 이벤트 발생량](images/hourly_events.png)
 
-| AWS 서비스 | 역할 | 현재 프로젝트 대응 |
-|---|---|---|
-| ECR | Docker 이미지 저장소 | Docker Hub 대신 |
-| EC2 | 앱이 실행되는 서버 | 로컬 컴퓨터 대신 |
-| ECS Cluster | EC2 위에서 컨테이너 오케스트레이션 | docker-compose 대신 |
-| ECS Service | Task 수 유지 및 자동 재시작 관리 | docker-compose의 restart 정책 대신 |
-| RDS | 관리형 PostgreSQL | docker-compose의 db 서비스 대신 |
-| S3 | 차트 이미지 저장 | 로컬 `images/charts/` 폴더 대신 |
+**디바이스 타입별 주문율**
+MOBILE과 DESKTOP 각 디바이스에서 발생한 주문 비율을 비교합니다.
+![디바이스 타입별 주문율](images/device_order_rate.png)
 
-**선택 이유**
+**상품별 주문 실패율**
+상품별로 주문 시도 대비 실패 비율을 파악합니다.
+![상품별 주문 실패율](images/product_fail_rate.png)
 
-REST API 서버는 이벤트를 상시 수신해야 하므로 24시간 켜있어야 합니다. 이 경우 EC2 예약 구매가 Fargate보다 저렴합니다. ChartService는 같은 앱 안에 포함되어 있어 별도로 분리하지 않아도 되므로 구성이 단순합니다.
+**카테고리별 판매량**
+전자기기와 의류 카테고리별 총 판매 수량을 비교합니다.
+![카테고리별 판매량](images/category_sales.png)
 
 ---
 
 ## 선택 A. Kubernetes 배포 설정
 
-`k8s/` 디렉토리에 이벤트 생성기 앱을 Kubernetes에 배포하기 위한 manifest 파일을 작성했습니다.
+`k8s/` 디렉토리에 Kubernetes에 배포하기 위한 manifest 파일을 작성했습니다.
 
 ```
 k8s/
@@ -276,28 +276,43 @@ Deployment가 생성한 파드에 고정된 네트워크 주소를 부여합니�
 
 ---
 
-## Step 5. 결과 시각화
+## 선택 B. AWS 아키텍처 설계
 
-**전체 이벤트 중 성공과 실패 비율**
-전체 이벤트 중 정상 처리된 이벤트와 실패한 이벤트의 비율을 나타냅니다.
+### EC2 + ECS
 
-  남길 내용 (feat/create-chart 쪽):
-  ![전체 이벤트 중 성공과 실패 비율](images/success_fail_ratio.png)
+![시스템 아키텍처](images/시스템%20아키텍쳐.png)
 
-  **시간대별 이벤트 발생량**
-  ...
-  ![시간대별 이벤트 발생량](images/hourly_events.png)
-
-  **디바이스 타입별 주문율**
-  ...
-  ![디바이스 타입별 주문율](images/device_order_rate.png)
-
-  **상품별 주문 실패율**
-  ...
-  ![상품별 주문 실패율](images/product_fail_rate.png)
-
-  **카테고리별 판매량**
-  ...
-  ![카테고리별 판매량](images/category_sales.png)
+| AWS 서비스 | 역할 |
+|---|---|
+| ECR | Docker 이미지 저장소 |
+| EC2 | 앱이 실행되는 서버 |
+| ECS Cluster | EC2 위에서 컨테이너 오케스트레이션 |
+| ECS Service | Task 수 유지 및 자동 재시작 관리 |
+| RDS | 관리형 PostgreSQL |
+| S3 | 차트 이미지 저장 |
 
 ---
+
+## 구현하면서 고민한 점
+
+### ORDER_FAILED 이벤트를 별도 트랜잭션으로 분리
+
+주문 실패(재고 부족) 시 주문 트랜잭션은 롤백되어야 하지만, ORDER_FAILED 이벤트 기록은 남아야 합니다. 처음엔 같은 트랜잭션에 넣었다가 롤백 시 이벤트도 함께 사라지는 문제를 발견했습니다. `logFailure()`에 `Propagation.REQUIRES_NEW`를 적용해 주문 트랜잭션과 완전히 독립된 트랜잭션으로 이벤트를 저장하도록 해결했습니다.
+
+### EventGenerator를 서비스 직접 호출 대신 REST API HTTP 요청으로 구현
+
+처음에는 `OrderService.createOrder()`를 직접 호출하는 방식을 생각했습니다. 하지만 이 방식은 컨트롤러·직렬화·유효성 검사 등 실제 서비스 흐름을 건너뛰기 때문에, 실제 운영 환경과 동일한 경로로 이벤트를 만들고 싶었습니다. `RestTemplate`으로 HTTP 요청을 직접 보내는 방식으로 바꿔 전체 스택이 정상 동작하는지까지 함께 검증할 수 있었습니다.
+
+### 재고 감소에 비관적 락 적용
+
+`EventGenerator`가 빠르게 1000건의 주문 요청을 보내면 동시에 같은 상품의 재고를 수정하게 됩니다. 락 없이 구현했을 때 재고가 음수로 떨어지는 문제가 발생했습니다. `findByIdWithLock()`으로 비관적 락을 걸어 한 번에 하나의 트랜잭션만 재고를 수정하도록 해결했습니다.
+
+### ChartService에서 JPA 대신 JdbcTemplate 사용
+
+집계 쿼리를 JPA로 작성하면 JPQL이나 Criteria API를 써야 하는데, `CASE WHEN`, `WINDOW FUNCTION`, 여러 테이블 JOIN이 얽힌 쿼리는 코드가 너무 복잡해졌습니다. 어차피 읽기 전용 분석 쿼리이므로 `JdbcTemplate`으로 SQL을 직접 작성하는 게 훨씬 명확하다고 판단했습니다.
+
+### 이벤트 드리븐 아키텍처 도입을 검토했지만 적용하지 않은 이유
+
+Kafka 같은 메시지 브로커를 도입해 이벤트를 비동기로 처리하는 구조를 고민했습니다. 이벤트 생산과 소비를 분리하면 서비스 간 결합도를 낮출 수 있고, 트래픽이 몰릴 때 이벤트를 큐에 쌓아 처리 속도를 조절할 수 있다는 장점이 있습니다.
+
+하지만 이 프로젝트의 규모에서는 오히려 복잡도만 높인다고 판단했습니다. Kafka 클러스터 구성·운영, 메시지 직렬화, 컨슈머 그룹 관리 등 부가적인 인프라 비용이 발생하는 반면, 1000건의 이벤트를 단일 앱에서 동기로 처리하는 데 성능 문제가 없었습니다. 이벤트 드리븐은 서비스가 분리되거나 처리량이 현재보다 훨씬 커질 때 도입하는 것이 적절하다고 결론 내렸습니다.
