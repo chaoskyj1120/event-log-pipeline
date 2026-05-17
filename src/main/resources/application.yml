@@ -3,3 +3,9 @@ spring:
     url: jdbc:postgresql://localhost:5432/event_log_pipeline
     username: event_log_pipeline_user
     password: "000000"
+  jpa:
+    hibernate:
+      ddl-auto: create
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect

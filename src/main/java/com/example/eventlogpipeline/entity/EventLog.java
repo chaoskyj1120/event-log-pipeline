@@ -1,0 +1,72 @@
+package com.example.eventlogpipeline.entity;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Index;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.Table;
+import lombok.AccessLevel;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+
+import java.time.Instant;
+import java.util.UUID;
+
+@Entity
+@Table(
+        name = "event_logs",
+        indexes = {
+                @Index(name = "idx_event_logs_user",    columnList = "user_id"),
+                @Index(name = "idx_event_logs_type",    columnList = "event_type"),
+                @Index(name = "idx_event_logs_time",    columnList = "event_time"),
+                @Index(name = "idx_event_logs_product", columnList = "product_id")
+        }
+)
+@Getter
+@Builder
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
+@AllArgsConstructor(access = AccessLevel.PRIVATE)
+public class EventLog {
+
+    @Id
+    @Column(name = "event_id", columnDefinition = "uuid", updatable = false, nullable = false)
+    @Builder.Default
+    private UUID eventId = UUID.randomUUID();
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "user_id", nullable = false)
+    private User user;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "event_type", length = 50, nullable = false)
+    private EventType eventType;
+
+    // 실서비스에서는 @CreationTimestamp를 사용해 INSERT 시점을 자동 기록한다.
+    // 현재는 이벤트 생성기에서 랜덤 시간대의 이벤트를 시뮬레이션하기 위해
+    // Builder로 직접 eventTime을 주입받도록 변경하였다.
+    @Column(name = "event_time", nullable = false, updatable = false)
+    @Builder.Default
+    private Instant eventTime = Instant.now();
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "product_id")
+    private Product product;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "device_type", length = 20)
+    private DeviceType deviceType;
+
+    @Column(name = "is_succeeded", nullable = false)
+    @Builder.Default
+    private boolean isSucceeded = true;
+
+    @Column(name = "failed_reason", length = 20)
+    private String failedReason;
+}
